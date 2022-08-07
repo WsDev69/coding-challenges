@@ -3,6 +3,10 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/go-playground/validator/v10"
+
+	"github.com/fiskaly/coding-challenges/signing-service-challenge/service"
 )
 
 // Response is the generic API response container.
@@ -18,13 +22,18 @@ type ErrorResponse struct {
 // Server manages HTTP requests and dispatches them to the appropriate services.
 type Server struct {
 	listenAddress string
+
+	signature service.Signature
+
+	v *validator.Validate
 }
 
 // NewServer is a factory to instantiate a new Server.
-func NewServer(listenAddress string) *Server {
+func NewServer(listenAddress string, signature service.Signature) *Server {
 	return &Server{
 		listenAddress: listenAddress,
-		// TODO: add services / further dependencies here ...
+		v:             validator.New(),
+		signature:     signature,
 	}
 }
 
@@ -33,8 +42,8 @@ func (s *Server) Run() error {
 	mux := http.NewServeMux()
 
 	mux.Handle("/api/v0/health", http.HandlerFunc(s.Health))
-
-	// TODO: register further HandlerFuncs here ...
+	mux.Handle("/api/v0/device", http.HandlerFunc(s.CreateSignatureDevice))
+	mux.Handle("/api/v0/sign", http.HandlerFunc(s.SignTransaction))
 
 	return http.ListenAndServe(s.listenAddress, mux)
 }
@@ -42,7 +51,7 @@ func (s *Server) Run() error {
 // WriteInternalError writes a default internal error message as an HTTP response.
 func WriteInternalError(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
+	w.Write([]byte(http.StatusText(http.StatusInternalServerError))) //nolint:errcheck
 }
 
 // WriteErrorResponse takes an HTTP status code and a slice of errors
@@ -59,7 +68,7 @@ func WriteErrorResponse(w http.ResponseWriter, code int, errors []string) {
 		WriteInternalError(w)
 	}
 
-	w.Write(bytes)
+	w.Write(bytes) //nolint:errcheck
 }
 
 // WriteAPIResponse takes an HTTP status code and a generic data struct
@@ -76,5 +85,11 @@ func WriteAPIResponse(w http.ResponseWriter, code int, data interface{}) {
 		WriteInternalError(w)
 	}
 
-	w.Write(bytes)
+	w.Write(bytes) //nolint:errcheck
+}
+
+func WriteMethodNotAllowed(w http.ResponseWriter) {
+	WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{
+		http.StatusText(http.StatusMethodNotAllowed),
+	})
 }

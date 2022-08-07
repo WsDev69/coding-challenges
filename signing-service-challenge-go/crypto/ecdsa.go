@@ -4,6 +4,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrWrongKeyPairType    = errors.New("keyPair isn't")
+	ErrWrongKeyPairTypeRSA = errors.New("keyPair isn't")
+	ErrWrongKeyPairTypeECC = fmt.Errorf("ECC %f", ErrWrongKeyPairType)
 )
 
 // ECCKeyPair is a DTO that holds ECC private and public keys.
@@ -15,39 +23,45 @@ type ECCKeyPair struct {
 // ECCMarshaler can encode and decode an ECC key pair.
 type ECCMarshaler struct{}
 
-// NewECCMarshaler creates a new ECCMarshaler.
-func NewECCMarshaler() ECCMarshaler {
-	return ECCMarshaler{}
+// NewECCMarshaller creates a new ECCMarshaler.
+func NewECCMarshaller() KeyPairMarshaller {
+	return &ECCMarshaler{}
 }
 
-// Encode takes an ECCKeyPair and encodes it to be written on disk.
+// Marshal takes an ECCKeyPair and encodes it to be written on disk.
 // It returns the public and the private key as a byte slice.
-func (m ECCMarshaler) Encode(keyPair ECCKeyPair) ([]byte, []byte, error) {
-	privateKeyBytes, err := x509.MarshalECPrivateKey(keyPair.Private)
+func (m ECCMarshaler) Marshal(keyPair interface{}) (public, private []byte, err error) {
+	v, ok := keyPair.(*ECCKeyPair)
+	if !ok {
+		err = ErrWrongKeyPairTypeECC
+
+		return
+	}
+	privateKeyBytes, err := x509.MarshalECPrivateKey(v.Private)
 	if err != nil {
-		return nil, nil, err
+		return
 	}
 
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&keyPair.Public)
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(v.Public)
 	if err != nil {
-		return nil, nil, err
+		return
 	}
 
-	encodedPrivate := pem.EncodeToMemory(&pem.Block{
+	private = pem.EncodeToMemory(&pem.Block{
 		Type:  "PRIVATE_KEY",
 		Bytes: privateKeyBytes,
 	})
 
-	encodedPublic := pem.EncodeToMemory(&pem.Block{
+	public = pem.EncodeToMemory(&pem.Block{
 		Type:  "PUBLIC_KEY",
 		Bytes: publicKeyBytes,
 	})
 
-	return encodedPublic, encodedPrivate, nil
+	return
 }
 
-// Decode assembles an ECCKeyPair from an encoded private key.
-func (m ECCMarshaler) Decode(privateKeyBytes []byte) (*ECCKeyPair, error) {
+// UnMarshal assembles an ECCKeyPair from an encoded private key.
+func (m ECCMarshaler) UnMarshal(privateKeyBytes []byte) (keyPair interface{}, err error) {
 	block, _ := pem.Decode(privateKeyBytes)
 	privateKey, err := x509.ParseECPrivateKey(block.Bytes)
 	if err != nil {
